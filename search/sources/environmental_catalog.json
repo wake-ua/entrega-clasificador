@@ -1,0 +1,60 @@
+[
+    {
+        "dataset_id": "ds3",
+        "nombre": "Air Quality Stations Spain 2024",
+        "topic": "air quality",
+        "descripcion": "Mediciones de calidad del aire en estaciones urbanas españolas",
+        "columnas": [
+            {
+                "nombre": "station_id",
+                "descripcion": "Identificador único de la estación de medición",
+                "ejemplo": ["ES0001A", "ES0118A", "ES1234A", "ES0567A"]
+            },
+            {
+                "nombre": "station_name",
+                "descripcion": "Nombre de la estación",
+                "ejemplo": ["Madrid - Retiro", "Barcelona - Gràcia", "Valencia - Centro", "Sevilla - Bermejales"]
+            },
+            {
+                "nombre": "timestamp",
+                "descripcion": "Momento de la medición (ISO 8601)",
+                "ejemplo": ["2024-11-10T08:00:00Z", "2024-11-10T09:00:00Z", "2024-11-10T10:00:00Z"]
+            },
+            {
+                "nombre": "pm25",
+                "descripcion": "Concentración de partículas PM2.5 (µg/m³)",
+                "ejemplo": [12.5, 18.3, 25.7, 8.9, 45.2]
+            },
+            {
+                "nombre": "pm10",
+                "descripcion": "Concentración de partículas PM10 (µg/m³)",
+                "ejemplo": [25.0, 32.5, 48.1, 15.3, 67.8]
+            },
+            {
+                "nombre": "no2",
+                "descripcion": "Concentración de dióxido de nitrógeno (µg/m³)",
+                "ejemplo": [35.2, 52.8, 28.4, 71.5, 15.9]
+            },
+            {
+                "nombre": "o3",
+                "descripcion": "Concentración de ozono troposférico (µg/m³)",
+                "ejemplo": [45.0, 68.5, 92.3, 38.7, 105.2]
+            },
+            {
+                "nombre": "location_lat",
+                "descripcion": "Latitud de la estación (WGS84)",
+                "ejemplo": [40.4168, 41.3851, 39.4699, 37.3891]
+            },
+            {
+                "nombre": "location_lon",
+                "descripcion": "Longitud de la estación (WGS84)",
+                "ejemplo": [-3.7038, 2.1734, -0.3763, -5.9845]
+            },
+            {
+                "nombre": "altitude_m",
+                "descripcion": "Altitud de la estación sobre el nivel del mar (metros)",
+                "ejemplo": [667, 12, 15, 7, 1200]
+            }
+        ]
+    }
+]

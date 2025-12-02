@@ -1,0 +1,93 @@
+[
+    {
+        "dataset_id": "ds1",
+        "nombre": "Patient Records Spain 2024",
+        "topic": "patient records",
+        "descripcion": "Registros médicos anonimizados de hospitales españoles",
+        "columnas": [
+            {
+                "nombre": "record_id",
+                "descripcion": "Identificador único del registro (UUID)",
+                "ejemplo": ["a3f2c891-4d5e-4b2a-9c8d-1e7f9a3b5c2d", "b7e8d234-9f1a-4c3b-8d2e-5a9c7f1b3e4d"]
+            },
+            {
+                "nombre": "age_group",
+                "descripcion": "Grupo etario del paciente",
+                "ejemplo": ["0-18", "19-35", "36-50", "51-65", "66+"]
+            },
+            {
+                "nombre": "gender",
+                "descripcion": "Género del paciente",
+                "ejemplo": ["M", "F", "X"]
+            },
+            {
+                "nombre": "diagnosis_code",
+                "descripcion": "Código ICD-10 de diagnóstico principal",
+                "ejemplo": ["J20.9", "I10", "E11.9", "M79.3", "K21.0"]
+            },
+            {
+                "nombre": "treatment_outcome",
+                "descripcion": "Resultado del tratamiento",
+                "ejemplo": ["success", "partial", "failure", "ongoing"]
+            },
+            {
+                "nombre": "admission_date",
+                "descripcion": "Fecha de admisión (formato: YYYY-MM-DD)",
+                "ejemplo": ["2024-01-15", "2024-03-22", "2024-07-08", "2024-10-30"]
+            },
+            {
+                "nombre": "patient_ssn",
+                "descripcion": "Número de seguridad social (BLOQUEADO - solo para auditoría interna)",
+                "ejemplo": ["***REDACTED***"]
+            },
+            {
+                "nombre": "hospital_region",
+                "descripcion": "Región del hospital (nivel NUTS-2)",
+                "ejemplo": ["ES51", "ES30", "ES21", "ES52"]
+            }
+        ]
+    },
+    {
+        "dataset_id": "ds2",
+        "nombre": "Treatment Costs EU 2023-2024",
+        "topic": "treatment costs",
+        "descripcion": "Costes de procedimientos médicos en hospitales de la UE",
+        "columnas": [
+            {
+                "nombre": "treatment_id",
+                "descripcion": "Identificador único del tratamiento",
+                "ejemplo": ["TRT-2024-001234", "TRT-2024-005678", "TRT-2023-098765"]
+            },
+            {
+                "nombre": "procedure_code",
+                "descripcion": "Código del procedimiento médico (CPT/ICD-10-PCS)",
+                "ejemplo": ["99213", "43239", "36415", "70450"]
+            },
+            {
+                "nombre": "cost_eur",
+                "descripcion": "Coste total en euros",
+                "ejemplo": [125.5, 1250.0, 85.3, 3500.75]
+            },
+            {
+                "nombre": "duration_days",
+                "descripcion": "Duración del tratamiento en días",
+                "ejemplo": [1, 3, 7, 14, 21]
+            },
+            {
+                "nombre": "provider_name",
+                "descripcion": "Nombre del proveedor médico",
+                "ejemplo": ["Hospital Universitario La Paz", "Clínica Universitaria de Navarra", "Hospital Clinic Barcelona"]
+            },
+            {
+                "nombre": "country_code",
+                "descripcion": "Código ISO del país",
+                "ejemplo": ["ES", "FR", "DE", "IT", "PT"]
+            },
+            {
+                "nombre": "treatment_date",
+                "descripcion": "Fecha del tratamiento",
+                "ejemplo": ["2023-06-12", "2024-02-20", "2024-08-15"]
+            }
+        ]
+    }
+]

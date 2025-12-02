@@ -1,0 +1,14 @@
+[project]
+name = "langgraph-prueba"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "langchain-ollama>=0.3.10",
+  "langchain>=0.3.0",
+  "langgraph>=0.6.8",
+  "langsmith>=0.4.31",
+  "python-dotenv>=1.0.1",
+  "typing-extensions>=4.15.0",
+]
