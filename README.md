@@ -51,8 +51,7 @@ Sistema de agente conversacional que analiza las intenciones del usuario para b�
 │  │  └─ environmental_catalog.json  # Datasets ambientales
 │  ├─ catalog.py                 # Carga dinámica + búsqueda
 │  └─ joiners.py                 # Ranking por completitud
-└─ docs/
-   └─ refactoring-search-architecture.md
+└─ README.md
 ```
 
 ### Flujo del Grafo (LangGraph)
@@ -412,7 +411,7 @@ Usuario: Ahora busca datos ambientales en Francia
 
 `search_boundaries` es una lista de índices de mensajes que marcan el fin de cada búsqueda completada.
 
-> Necesario porque para no pasar conversación entera al LLM para sacar intents, solo lo relevante
+> Necesario para no pasar conversación entera al LLM para sacar intents, solo lo relevante de la nueva búsqueda
 
 ---
 
