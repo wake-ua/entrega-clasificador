@@ -42,7 +42,7 @@ class State(TypedDict):
     #   "required_columns": List[str],  # ["empleo", "edad", "fecha"]
     #   "aggregation_type": str  # "statistics" | "count" | "average" | "row_level"
     # }
-    
+
     useful_data: List[Dict[str, Any]] # Datasets seleccionados del catálogo
     
     # ===== Agente Negociador (futuro subgrafo) =====
@@ -57,6 +57,8 @@ class State(TypedDict):
     # ===== Control de bucles =====
     iterations: int
     max_iterations: int
+    clarification_attempts: int  # Número de veces que hemos preguntado por clarificación
+    search_boundaries: List[int]  # Índices que marcan finales de búsquedas completadas
     
     # ===== Dashboard final =====
     dashboard: Optional[str]
@@ -142,11 +144,27 @@ def node_compute(state: State, runtime: Runtime[Context]) -> Dict[str, Any]:
 
 def node_dashboard(state: State) -> Dict[str, Any]:
     """🚧 STUB: Construye el dashboard final con todo lo recopilado."""
-    print("\n--- Entrando en node_dashboard ---")
+    print("\n--- Entrando en node_dashboard ---\nFlujo terminado con éxito\n")
     
     iterations = state.get("iterations", 0) + 1
+    
+    # GUARDAR boundary: marcar que esta búsqueda terminó
+    current_boundaries = state.get("search_boundaries", [])
+    new_boundary = len(state.get("messages", []))
+    updated_boundaries = current_boundaries + [new_boundary]
+    
+    print(f"📍 Boundary guardado: índice {new_boundary}")
 
-    return {"iterations": iterations}
+    # REINICIAR variables de búsqueda para la próxima consulta
+    return {
+        "iterations": iterations,
+        "user_search_intent": None,
+        "user_search_intent_structured": None,
+        "clarification_attempts": 0,
+        "useful_data": [],
+        "schemas": [],
+        "search_boundaries": updated_boundaries
+    }
 
 # ---------- 5) Routers ----------
 def router_route_intent(state: State, runtime: Runtime[Context]) -> str:
@@ -178,9 +196,7 @@ Historial:
 
 Responde SOLO con el nombre del nodo (sin comillas):
 - "chatbot" si es conversación general (saludo, pregunta sobre el sistema, agradecimiento)
-- "confirm_search" si pide buscar/analizar/consultar datos
-
-Respuesta:"""
+- "confirm_search" si pide buscar/analizar/consultar datos"""
     
     out = runtime.context.llm.invoke(prompt)
     next_node = out.content.strip().replace('"', '')
@@ -240,20 +256,17 @@ def build_graph() -> StateGraph:
 
 # ---------- 7) Run ----------
 if __name__ == "__main__":
-    print("Agente de Datos Interactivo. Escribe 'salir' o 'exit' para terminar.")
+    print("Agente Simplificado (Demo Intent + Search). Escribe 'salir' para terminar.")
     
-    llm = ChatOllama(model="llama3.1", base_url="http://127.0.0.1:11434", temperature=0.2)
+    llm = ChatOllama(model="llama3.1", base_url="http://127.0.0.1:11434", temperature=0.0)
     ctx = Context(llm=llm)
-    
-    # Checkpointer necesario para interrupt()
     memory = MemorySaver()
     graph = build_graph().compile(checkpointer=memory)
 
-    # Estado inicial vacío que se conservará entre turnos
-    state: State = {
+    state = {
         "messages": [],
         "user_search_intent": None,
-        "user_search_intent_structured": None,  # Añadido: intent estructurado
+        "user_search_intent_structured": None,
         "useful_data": [],
         "negotiation_terms": {},
         "schemas": [],
@@ -261,73 +274,57 @@ if __name__ == "__main__":
         "aggregates": {},
         "iterations": 0,
         "max_iterations": 15,
+        "clarification_attempts": 0,
+        "search_boundaries": [],
         "dashboard": None,
     }
     
-    # Thread ID para checkpointer (mantiene estado entre interrupts)
-    thread_id = "user_session_1"
-    config = {"configurable": {"thread_id": thread_id}}
+    config = {"configurable": {"thread_id": "demo_session"}}
+    
+    # Control de mensajes impresos para no repetir
+    printed_messages = set()
+    
+    # Flag para saber si estamos esperando respuesta a un interrupt
+    awaiting_interrupt = False
 
     while True:
-        user_input = input(">>> Tú: ")
-        if user_input.lower() in ["salir", "exit"]:
-            print(">>> Agente: ¡Hasta luego!")
+        try:
+            user_input = input(">>> Tú: ")
+            if user_input.lower() in ["salir", "exit"]:
+                break
+            
+            # Si estamos en pausa por interrupt, reanudamos con Command
+            if awaiting_interrupt:
+                input_data = Command(resume=user_input)
+                awaiting_interrupt = False
+            else:
+                # Flujo normal: añadir mensaje al estado y pasar el estado completo
+                state["messages"].append(HumanMessage(content=user_input))
+                input_data = state
+            
+            # Ejecutar grafo
+            final_state = None
+            for chunk in graph.stream(input_data, context=ctx, config=config, stream_mode='values'):
+                final_state = chunk
+                
+                # Imprimir mensajes nuevos
+                msgs = final_state.get("messages", [])
+                for i, msg in enumerate(msgs):
+                    msg_key = (i, msg.content[:50])
+                    if isinstance(msg, AIMessage) and msg_key not in printed_messages:
+                        print(f">>> Agente: {msg.content}")
+                        printed_messages.add(msg_key)
+            
+            # Actualizar estado local con el resultado
+            if final_state:
+                state = final_state
+                
+                # Verificar si el grafo se detuvo por un interrupt
+                if "__interrupt__" in final_state and final_state["__interrupt__"]:
+                    awaiting_interrupt = True
+
+        except Exception as e:
+            print(f"Error: {e}")
+            import traceback
+            traceback.print_exc()
             break
-        
-        # Añadir mensaje del usuario al historial
-        state["messages"].append(HumanMessage(content=user_input))
-        
-        # Rastrear mensajes ya impresos usando (contenido, índice) como clave única
-        # NO usamos id() porque los objetos cambian entre streams
-        printed_messages = set()
-        for i, msg in enumerate(state.get("messages", [])):
-            if isinstance(msg, AIMessage):
-                printed_messages.add((i, msg.content[:100]))  # (índice, primeros 100 chars)
-        
-        # Stream con checkpointer (necesario para interrupt())
-        final_state = None
-        for chunk in graph.stream(state, context=ctx, config=config, stream_mode='values'):
-            final_state = chunk
-            
-            # Imprimir SOLO mensajes nuevos
-            current_messages = final_state.get("messages", [])
-            for i, msg in enumerate(current_messages):
-                msg_key = (i, msg.content[:100])
-                if isinstance(msg, AIMessage) and msg_key not in printed_messages:
-                    print(f">>> Agente: {msg.content}")
-                    printed_messages.add(msg_key)
-        
-        # Actualizar estado si terminó la ejecución
-        if final_state:
-            state = final_state
-            
-            # Verificar si hay un interrupt pendiente
-            if "__interrupt__" in final_state:
-                interrupts = final_state["__interrupt__"]
-                if interrupts:
-                    # El nodo llamó a interrupt() con un AIMessage
-                    # La pregunta YA fue impresa en el loop anterior
-                    # Solo pedimos la respuesta del usuario
-                    
-                    # Pedir respuesta del usuario
-                    user_response = input(">>> Tú: ")
-                    if user_response.lower() in ["salir", "exit"]:
-                        print(">>> Agente: ¡Hasta luego!")
-                        break
-                    
-                    # Reanudar con Command(resume=respuesta)
-                    print(f"⚙️ Reanudando grafo...")
-                    for chunk in graph.stream(Command(resume=user_response), context=ctx, config=config, stream_mode='values'):
-                        final_state = chunk
-                        
-                        # Imprimir SOLO mensajes nuevos
-                        current_messages = final_state.get("messages", [])
-                        for i, msg in enumerate(current_messages):
-                            msg_key = (i, msg.content[:100])
-                            if isinstance(msg, AIMessage) and msg_key not in printed_messages:
-                                print(f">>> Agente: {msg.content}")
-                                printed_messages.add(msg_key)
-                    
-                    # Actualizar estado después del resume
-                    if final_state:
-                        state = final_state

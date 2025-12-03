@@ -12,8 +12,14 @@ from langgraph.runtime import Runtime
 # 1. FUNCIONES AUXILIARES (HELPERS)
 # ==========================================
 
-def extract_intent_components(messages: list, llm: ChatOllama) -> Dict[str, Any]:
+def extract_intent_components(messages: list, llm: ChatOllama, search_boundaries: list = None) -> Dict[str, Any]:
     """Extrae componentes atómicos del intent del usuario."""
+    # Filtrar mensajes desde el último boundary
+    if search_boundaries:
+        last_boundary = search_boundaries[-1] if search_boundaries else 0
+        messages = messages[last_boundary:]
+        print(f"📍 Analizando mensajes desde índice {last_boundary} ({len(messages)} mensajes)")
+    
     user_messages = [m for m in messages if isinstance(m, HumanMessage)]
     if not user_messages:
         return None
@@ -38,7 +44,7 @@ Extrae:
 
 IMPORTANTE: Responde ÚNICAMENTE con un objeto JSON válido, sin explicaciones ni texto adicional.
 
-Formato requerido:
+Formato requerido con EJEMPLO DE RESPUESTA:
 {{
   "topic": "empleo",
   "temporal_filters": ["últimos 5 años"],
@@ -79,38 +85,105 @@ Formato requerido:
         print(f"❌ Error inesperado extrayendo componentes: {e}")
         return None
 
-def detect_ambiguities(intent: Dict[str, Any], llm: ChatOllama) -> Optional[str]:
+def detect_ambiguities(intent: Dict[str, Any], llm: ChatOllama, clarification_attempts: int = 0) -> Optional[str]:
     """Detecta ambigüedades o información faltante crítica."""
-    prompt = f"""Analiza si esta búsqueda es ambigua onecesita más detalles:
+    
+    # 1. ANÁLISIS DETERMINISTA: Separar filtros vacíos de llenos
+    empty_filters = []
+    filled_filters = {}
+    
+    filter_names = ["spatial_filters", "temporal_filters", "demographic_filters"]
+    
+    for filter_name in filter_names:
+        filter_value = intent.get(filter_name, [])
+        if not filter_value or (isinstance(filter_value, list) and len(filter_value) == 0):
+            empty_filters.append(filter_name)
+        else:
+            filled_filters[filter_name] = filter_value
+    
+    # 2. Contar filtros llenos
+    num_filled = len(filled_filters)
+    
+    # 3. LÍMITE: Después de 2 intentos, aceptar lo que hay
+    if clarification_attempts >= 2:
+        print(f"⚠️ Límite alcanzado (intento #{clarification_attempts}). Aceptando búsqueda.")
+        return None
+    
+    # 4. LÓGICA ADAPTATIVA
+    ask_for_empty = False
+    check_vague = False
+    
+    if clarification_attempts == 0:
+        ask_for_empty = True
+        check_vague = True
+        mode = "PRIMERA_VEZ"
+    elif num_filled >= 2:
+        ask_for_empty = False
+        check_vague = True
+        mode = "SOLO_AMBIGUEDADES"
+    else:
+        ask_for_empty = True
+        check_vague = True
+        mode = "INSISTIR"
+    
+    print(f"🔍 Modo: {mode} (intento #{clarification_attempts}, {num_filled}/3 filtros)")
+    
+    # 5. CONSTRUCCIÓN MODULAR DEL PROMPT
+    prompt_base = f"""Analiza esta búsqueda:
 
-INTENT ACTUAL:
-{json.dumps(intent, indent=2, ensure_ascii=False)}
+TOPIC: {intent.get('topic', 'N/A')}
+FILTROS VACÍOS: {', '.join(empty_filters) if empty_filters else 'Ninguno'}
+FILTROS CON VALORES: {json.dumps(filled_filters, indent=2, ensure_ascii=False) if filled_filters else 'Ninguno'}
 
-TENEMOS AMBIGÜEDAD CUANDO:
-1. BÚSQUEDA DEMASIADO GENERAL: No se especifica DÓNDE (spatial_filters) ni CUÁNDO (temporal_filters), etc. DEBES comprobar que el intent tiene valor para cada filtro. En caso contrario, DEBES preguntar por los vacíos.
-3. TÉRMINOS VAGOS: Palabras como "reciente", "actual", "últimos años", "personas mayores", "crisis" que no son concretas.
+"""
+    
+    instructions = []
+    
+    if check_vague and filled_filters:
+        instructions.append("""DETECTA AMBIGÜEDADES en los valores (sé estricto):
+- VAGOS: "últimos años", "reciente", "actual", "cerca", "personas mayores", "últimamente"
+- CLAROS: "España", "2025", "2020-2024", "últimos 5 años", "mayores de 65 años"
 
-SI ES AMBIGUO O FALTA CONTEXTO:
-Genera preguntas amables y directas para guiar al usuario a completar los filtros.
-Ejemplo: "¿Te interesan datos de un país o región específica?" o "¿Buscas datos de este año o una serie histórica?"
+IMPORTANTE: Un año específico como "2025" o "2024" es CLARO, no es vago.
+Solo pregunta si encuentras términos VAGOS.""")
+    
+    if ask_for_empty and empty_filters:
+        instructions.append("""HAZ PREGUNTAS para llenar filtros vacíos:
+- Los 3 filtros son igual de importantes
+- Pregunta de forma natural por lo que falta
+- Puedes preguntar por varios a la vez""")
+    
+    # Criterio de salida
+    if num_filled >= 2:
+        instructions.append("""
+CRITERIO DE SALIDA:
+- Si tienes 2/3 filtros con valores CLAROS (años específicos, países, rangos concretos) → NO_AMBIGUITIES
+- Solo pregunta si hay algo realmente VAGO o AMBIGUO""")
+    else:
+        instructions.append("\nSi ya hay 2/3 filtros claros, responde: NO_AMBIGUITIES")
+    
+    prompt = prompt_base + "\n".join(instructions) + """
 
-IMPORTANTE: Responde SOLO con:
-1. Una pregunta corta y amigable, O
-2. Exactamente la palabra "NO_AMBIGUITIES"
-
-NO incluyas explicaciones, análisis ni introducciones."""
+Genera preguntas amigables y naturales que cubran TODO lo necesario.
+Si TODO está suficientemente claro, responde exactamente "NO_AMBIGUITIES"."""
     
     try:
         response = llm.invoke(prompt).content.strip()
         if "NO_AMBIGUITIES" in response.upper():
             return None
-        return response
+        # Extraer solo la pregunta (eliminar prefijos como "Pregunta:")
+        lines = response.split('\n')
+        for line in lines:
+            if '?' in line:
+                return line.strip()
+        return response.strip()
     except Exception as e:
+        print(f"Error en detect_ambiguities: {e}")
         return None
 
 def build_confirmation_message(intent: Dict[str, Any], llm: ChatOllama) -> str:
     """Construye mensaje de confirmación en primera persona."""
-    prompt = f"""Genera un mensaje de confirmación EN PRIMERA PERSONA basado en este intent:
+    prompt = f"""Genera un mensaje de confirmación EN PRIMERA PERSONA recopilando todos los filtros y el topic de este intent:
 {json.dumps(intent, indent=2, ensure_ascii=False)}
 
 Ejemplo: "En resumen, busco datos de empleo en España..."
@@ -141,7 +214,8 @@ def node_analyze_intent(state: Dict, runtime: Runtime) -> Command:
 
     # 1. Extraer componentes
     print("🔍 Analizando intent...")
-    intent_components = extract_intent_components(state["messages"], runtime.context.llm)
+    search_boundaries = state.get("search_boundaries", [])
+    intent_components = extract_intent_components(state["messages"], runtime.context.llm, search_boundaries)
     
     if not intent_components:
          return Command(
@@ -150,7 +224,8 @@ def node_analyze_intent(state: Dict, runtime: Runtime) -> Command:
         )
 
     # 2. Detectar ambigüedades
-    clarification = detect_ambiguities(intent_components, runtime.context.llm)
+    attempts = state.get("clarification_attempts", 0)
+    clarification = detect_ambiguities(intent_components, runtime.context.llm, attempts)
     
     if clarification:
         print("⚠️ Ambigüedad detectada. Derivando a pregunta.")
@@ -190,10 +265,14 @@ def node_ask_clarification(state: Dict) -> Command:
     
     print(f"✅ Respuesta recibida: {user_response}")
     
+    # Incrementar contador de intentos
+    new_attempts = state.get("clarification_attempts", 0) + 1
+    
     # Regresar al análisis con la nueva información
     return Command(
         update={
-            "messages": [HumanMessage(content=user_response)]
+            "messages": [HumanMessage(content=user_response)],
+            "clarification_attempts": new_attempts
         },
         goto="analyze_intent"
     )
